@@ -32,7 +32,7 @@ Retrain + shadow-evaluate challenger (MLflow tracks both runs)
 MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP client
 ```
 
-## What's built so far (Phases 1-4)
+## What's built (Phases 1-5)
 
 - **Phase 1 — Data + baseline model.** 2,925,493 Lending Club loans (2007-2020), a leak-safe
   temporal split (train on loans issued before 2019, evaluate on 2019-2020), and an XGBoost
@@ -53,6 +53,11 @@ MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP cl
 - **Phase 4 — MCP server.** All six lifecycle tools (`get_model_health`, `get_drift_report`,
   `trigger_retrain`, `promote_challenger`, `rollback`, `explain_prediction`) exposed via the
   `mcp` SDK, driven end-to-end by a real MCP client below.
+- **Phase 5 — Quantified backtest.** A monthly walk-forward comparing three strategies —
+  static (never retrains), scheduled (blind quarterly retrain), and monitored
+  (drift-triggered retrain) — through the reliably-labeled 2019 window, plus a transparent
+  dollar-impact estimate. See the [Phase 5 results](#phase-5--quantified-backtest-results)
+  section below.
 
 ## How to run
 
@@ -63,6 +68,7 @@ uv run python -m reports.generate_phase1_report
 uv run python -m reports.generate_phase2_report
 uv run python -m reports.generate_phase3_report
 uv run python scripts/run_mcp_walkthrough.py   # drives the MCP server via a real client
+uv run python -m backtest.run_backtest         # the final quantified backtest
 ```
 
 ## MCP Lifecycle Walkthrough
@@ -142,6 +148,74 @@ lifecycle.registry.ConfirmationRequired: promote_challenger requires confirm=Tru
 This is the full spec lifecycle: health check → drift report → retrain → review the
 comparison → promote with explicit confirmation. `promote_challenger(confirm=False)` was
 attempted first and genuinely refused by the server before `confirm=True` was ever sent.
+
+## Phase 5 — Quantified Backtest Results
+
+All figures below are a **backtest on public historical Lending Club data** — a simulation
+of what three retraining strategies would have achieved, not a live production outcome.
+
+**Window.** The walk-forward is restricted to the reliably-labeled window, **2019-01 through
+2019-12** — 12 calendar months, each with at least 100 observed defaults (the same
+reliability bar Phase 1 established). Months closer to the eval data's September 2020 cutoff
+are right-censored: loans issued that recently haven't had time to actually resolve, which
+would make both the AUC trajectory and the dollar-impact calculation meaningless for that
+period regardless of which strategy is actually better — so the walk stops before entering
+that region, rather than reporting numbers known to be unreliable.
+
+![Static vs Scheduled vs Monitored AUC](reports/phase5_backtest_auc_trajectory.png)
+
+| Arm | Mean AUC (Jan-Dec 2019) | Retrains | AUC points recovered vs static |
+|---|---|---|---|
+| Static (never retrains) | 0.6758 | 0 | — |
+| Scheduled (blind quarterly) | 0.6990 | 3 | +0.0233 |
+| Monitored (drift-triggered, 2-month cooldown) | 0.7004 | 5 | +0.0247 |
+
+**Drift-detection lead time** (from Phase 2, reused here — not recomputed): macro-feature
+drift breached **17.4 weeks** before the AUC trough, giving the monitored strategy a genuine
+early-warning window rather than reacting only after damage was already visible in AUC.
+
+**Dollar impact.** At the final reliable month (2019-12), with a fixed 80% approval rate
+(each model picks its own threshold to accept exactly the lowest-risk 80% of that month's
+applicants — this is what keeps the comparison fair, since a model can't "win" simply by
+rejecting more loans than its competitor) and loss given default simplified to the full
+loan principal (no partial-recovery modeling — recovery amounts are excluded from features
+as leaky post-origination fields, spec §3, and genuinely aren't available here either):
+
+| Arm | Loans accepted | Defaults | Default rate | Loss per 10,000 loans |
+|---|---|---|---|---|
+| Static | 1,845 | 79 | 4.28% | $6,387,127 |
+| Monitored | 1,845 | 73 | 3.96% | $5,092,141 |
+
+Both arms accept the **same number of loans** — the comparison isn't inflated by one model
+simply rejecting more applicants. The monitored strategy's lower default rate among an
+equally-sized accepted pool translates to an estimated **$1,294,986 saved per 10,000 loans**
+from monitoring + retraining versus never retraining, on this backtest.
+
+## Definition of Done
+
+Reproduced from the spec, checked only where a specific report, chart, or test in this repo
+verifies the claim:
+
+- [x] Baseline model shows a real, visible AUC decline through 2020 without retraining —
+      [`reports/phase1_auc_decline.png`](reports/phase1_auc_decline.png), 0.691 → 0.642 over
+      the reliably-labeled 2019 quarters.
+- [x] Drift engine fires before the AUC trough, with a measured lead time —
+      [`reports/phase2_drift_lead_time.png`](reports/phase2_drift_lead_time.png), 17.4 weeks
+      (macro-feature signal).
+- [x] Retrain/evaluate/promote pipeline works end-to-end, tracked in MLflow —
+      [`reports/generate_phase3_report.py`](reports/generate_phase3_report.py) output;
+      registry backed by `var/mlflow.db`.
+- [x] `promote_challenger`/`rollback` verifiably refuse to act without `confirm=True`,
+      covered by a passing test —
+      [`tests/test_lifecycle_gating.py`](tests/test_lifecycle_gating.py).
+- [x] All six MCP tools work when driven from a real MCP client, with a saved example
+      transcript — [MCP Lifecycle Walkthrough](#mcp-lifecycle-walkthrough) above, captured by
+      [`scripts/run_mcp_walkthrough.py`](scripts/run_mcp_walkthrough.py).
+- [x] Backtest produces the four quantified numbers (AUC trajectory, lead time, AUC points
+      recovered, $-per-10,000-loans), each clearly labeled as simulated/historical — this
+      section, backed by [`backtest/run_backtest.py`](backtest/run_backtest.py).
+- [x] README states plainly, near the top, that this is a backtest on public historical data
+      and not a live production deployment — see the callout at the top of this file.
 
 ## Non-negotiable framing
 
