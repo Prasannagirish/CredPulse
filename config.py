@@ -3,7 +3,11 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
 
-RAW_CSV_PATH = Path.home() / "Downloads" / "creditpulse-data" / "accepted_2007_to_2018q4.csv" / "accepted_2007_to_2018Q4.csv"
+# wordsforthewise/lending-club (accepted_2007_to_2018Q4.csv) only covers loans through
+# 2018Q4 — no rows fall in the 2019-2020 eval window at all, so Phase 1 originally used the
+# wrong mirror. ethon0426/lending-club-20072020q1 extends through 2020-09 and matches the
+# spec's ~2.9M row estimate exactly (2,925,494 rows).
+RAW_CSV_PATH = Path.home() / "Downloads" / "creditpulse-data-2020" / "Loan_status_2007-2020Q3.gzip"
 
 VAR_DIR = REPO_ROOT / "var"
 PROCESSED_DIR = VAR_DIR / "processed"
