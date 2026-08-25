@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from model.train import evaluate_auc, train_baseline
+from model.train import evaluate_auc, quarterly_auc, train_baseline
 
 
 def _synthetic_reference_df(n: int = 200) -> pd.DataFrame:
@@ -43,3 +43,14 @@ def test_evaluate_auc_returns_value_between_0_and_1():
     pipeline, _, test_slice = train_baseline(df)
     auc = evaluate_auc(pipeline, test_slice)
     assert 0.0 <= auc <= 1.0
+
+
+def test_quarterly_auc_groups_by_calendar_quarter():
+    df = _synthetic_reference_df(n=400)
+    pipeline, _, _ = train_baseline(df)
+    eval_df = df.copy()
+    eval_df["issue_d"] = pd.date_range("2019-01-01", periods=len(df), freq="7D")
+    result = quarterly_auc(pipeline, eval_df)
+    assert list(result.columns) == ["quarter", "auc"]
+    assert result["quarter"].is_unique
+    assert result["auc"].between(0, 1).all()

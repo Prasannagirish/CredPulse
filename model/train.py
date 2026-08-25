@@ -43,3 +43,22 @@ def evaluate_auc(pipeline: Pipeline, df: pd.DataFrame) -> float:
     feature_cols = [c for c in df.columns if c not in (TARGET_COLUMN, "issue_d")]
     predictions = pipeline.predict_proba(df[feature_cols])[:, 1]
     return roc_auc_score(df[TARGET_COLUMN], predictions)
+
+
+def quarterly_auc(pipeline: Pipeline, eval_df: pd.DataFrame) -> pd.DataFrame:
+    """Evaluate the unmodified pipeline against each calendar quarter of eval_df.
+
+    This is the core Phase 1 measurement: the model is never retrained here, so a
+    declining trend across quarters is the drift problem made concrete (spec Phase 1
+    acceptance criteria) — a backtest result on historical, resolved loan outcomes.
+    """
+    df = eval_df.copy()
+    df["quarter"] = pd.PeriodIndex(df["issue_d"], freq="Q").astype(str)
+
+    rows = []
+    for quarter, group in df.groupby("quarter"):
+        if group[TARGET_COLUMN].nunique() < 2:
+            continue  # AUC undefined without both classes present
+        rows.append({"quarter": quarter, "auc": evaluate_auc(pipeline, group)})
+
+    return pd.DataFrame(rows).sort_values("quarter").reset_index(drop=True)
