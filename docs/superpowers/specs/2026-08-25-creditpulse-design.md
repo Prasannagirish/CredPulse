@@ -19,17 +19,21 @@ repeat it.
 
 - Python 3.12 via a `uv`-managed venv (system default is 3.14, where `xgboost`/`torch`/`mlflow`
   wheel support is unreliable). `uv venv --python 3.12`.
-- Dataset: Kaggle `wordsforthewise/lending-club`, `accepted_2007_to_2018Q4.csv` — already
-  downloaded to `~/Downloads/creditpulse-data/`. 2,260,702 rows, 151 columns. Confirmed schema
-  matches spec §3: `issue_d` (origination date), `loan_status` (target), full applicant/loan
-  attribute set, and the post-origination fields (`total_pymnt`, `recoveries`, `last_pymnt_d`,
-  etc.) that must be excluded from features.
-  - Real `loan_status` value counts (via pandas, not naive CSV split — several free-text
-    columns contain embedded commas): Fully Paid 1,059,885 / Current 871,037 / Charged Off
-    266,014 / Default 39 / plus Late and Grace Period buckets, all excluded as non-terminal.
-  - Row count (~2.26M) is below the spec's ~2.9M estimate — that estimate likely reflects a
-    different mirror or includes rejected applications. This is still the correct
-    accepted-loans dataset; not a blocker.
+- Dataset: Kaggle `ethon0426/lending-club-20072020q1`, `Loan_status_2007-2020Q3.gzip` (plain
+  CSV despite the extension) — downloaded to `~/Downloads/creditpulse-data-2020/`. 2,925,493
+  rows, 142 columns, matching the spec's ~2.9M row estimate exactly. Confirmed schema matches
+  spec §3: `issue_d` (origination date), `loan_status` (target), full applicant/loan attribute
+  set, and the post-origination fields (`total_pymnt`, `recoveries`, `last_pymnt_d`, etc.) that
+  must be excluded from features.
+  - **Correction:** the originally downloaded mirror (`wordsforthewise/lending-club`,
+    `accepted_2007_to_2018Q4.csv`) only covers loans through 2018Q4 — its 2019-2020 eval
+    window is empty, which broke Phase 1's premise before it was even discovered by running
+    the pipeline. Caught during Task 5 (`run_prepare` against real data) when `eval.parquet`
+    came out with 0 rows.
+  - After the temporal split: reference window (issued before 2019-01-01) = 1,781,073 rows,
+    19.6% default rate; eval window (2019-01-01 to 2020-09-01) = 79,691 rows, 17.1% default
+    rate, spread across 2019Q1-2020Q3 with volume tapering sharply into 2020 (COVID reduced
+    new originations, and the newest loans have had less time to resolve by the data cutoff).
 - MLflow backend store: **SQLite** (`sqlite:///mlflow.db`), not the default file store — file
   store does not support the model registry, which Phase 3/4 depend on. This is a hard
   constraint, not a style choice.
