@@ -1,5 +1,15 @@
 """MCP server exposing CreditPulse's model lifecycle as tools (spec §7). All results are
 backtest computations over historical Lending Club data — never a live evaluation."""
+import os
+
+# Must be the very first lines of this module, before any other import: this file's own
+# imports below (drift.engine -> torch, lifecycle.retrain -> xgboost) pull in both libraries
+# before mcp_server.state's own guard would run, and on macOS running both in one process
+# without this crashes at OpenMP init (Phase 2/3/4 finding, repeated here since this file is
+# a separate process entrypoint from the report scripts and the pytest conftest.py guard).
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 import re
 
 import mlflow
@@ -205,9 +215,17 @@ def trigger_retrain_impl() -> RetrainResult:
     champion on a held-out slice neither model trained on. Never promotes anything."""
     srv_state = state.get_state()
     all_loans_df = pd.concat([srv_state.reference_df, srv_state.eval_df], ignore_index=True)
-    as_of = srv_state.eval_df["issue_d"].max() - pd.DateOffset(months=2)
+
+    # The holdout must end inside reliably-labeled data, not just "the most recent 2 months
+    # available" — months close to the eval window's data cutoff are right-censored (Phase
+    # 1/2/3 finding: too few loans have had time to actually default yet), which makes AUC
+    # comparisons there meaningless regardless of which model is actually better.
+    reliable_label, _ = state.latest_reliable_batch(srv_state.eval_df)
+    holdout_end = pd.Period(reliable_label, freq="M").start_time + pd.DateOffset(months=1)
+    as_of = holdout_end - pd.DateOffset(months=2)
+
     training_window = select_recent_window(all_loans_df, as_of, months=config.RETRAIN_WINDOW_MONTHS)
-    holdout_start, holdout_end = as_of, as_of + pd.DateOffset(months=2)
+    holdout_start = as_of
     holdout_df = all_loans_df[
         (all_loans_df["issue_d"] >= holdout_start) & (all_loans_df["issue_d"] < holdout_end)
     ]

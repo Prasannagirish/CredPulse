@@ -1,5 +1,13 @@
 """Runtime state for the MCP server: loads/bootstraps the champion, fits the drift
 reference, and builds a SHAP explainer — computed once per process and cached."""
+import os
+
+# Must be set before numpy/xgboost/torch are imported: on macOS, XGBoost and PyTorch each
+# bundle their own OpenMP runtime, and running both in one process without this crashes
+# (Phase 2/3 finding) — this module is the first place the MCP server imports both.
+os.environ.setdefault("OMP_NUM_THREADS", "1")
+os.environ.setdefault("KMP_DUPLICATE_LIB_OK", "TRUE")
+
 from dataclasses import dataclass
 
 import mlflow
