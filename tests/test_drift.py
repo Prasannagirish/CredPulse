@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from drift.autoencoder import reconstruction_error, train_autoencoder
 from drift.statistical import (
     compute_feature_drift,
     fit_statistical_reference,
@@ -52,3 +53,22 @@ def test_compute_feature_drift_returns_all_features_sorted_by_psi():
     assert set(result["feature"]) == {"income", "grade"}
     assert list(result.columns) == ["feature", "type", "psi", "ks_stat"]
     assert result["psi"].is_monotonic_decreasing
+
+
+def test_reconstruction_error_lower_on_reference_than_random_noise():
+    rng = np.random.default_rng(0)
+    X_reference = rng.normal(0, 1, size=(500, 10)).astype(np.float32)
+    model = train_autoencoder(X_reference, epochs=20)
+
+    reference_errors = reconstruction_error(model, X_reference)
+    noise_errors = reconstruction_error(model, rng.normal(10, 5, size=(500, 10)).astype(np.float32))
+
+    assert reference_errors.mean() < noise_errors.mean()
+
+
+def test_reconstruction_error_returns_one_value_per_row():
+    rng = np.random.default_rng(0)
+    X = rng.normal(0, 1, size=(50, 6)).astype(np.float32)
+    model = train_autoencoder(X, epochs=5)
+    errors = reconstruction_error(model, X)
+    assert errors.shape == (50,)
