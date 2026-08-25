@@ -69,3 +69,7 @@ AE_BREACH_FRACTION = 0.05
 RETRAIN_WINDOW_MONTHS = 12
 
 MODEL_NAME = "creditpulse-credit-risk"
+
+# Columns that are never model features, in every "which columns go into X" computation
+# across model/train.py, lifecycle/evaluate.py, lifecycle/retrain.py, and the MCP server.
+NON_FEATURE_COLUMNS = (TARGET_COLUMN, "issue_d", "id")

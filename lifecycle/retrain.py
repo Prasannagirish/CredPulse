@@ -2,7 +2,7 @@
 import pandas as pd
 from sklearn.pipeline import Pipeline
 
-from config import RETRAIN_WINDOW_MONTHS, TARGET_COLUMN
+from config import NON_FEATURE_COLUMNS, RETRAIN_WINDOW_MONTHS, TARGET_COLUMN
 from model.train import build_model_pipeline
 
 
@@ -24,6 +24,6 @@ def retrain_challenger(training_df: pd.DataFrame) -> Pipeline:
     no internal holdout here; evaluation happens separately via lifecycle.evaluate, on a
     window the caller guarantees wasn't used for this training (spec Phase 3)."""
     pipeline = build_model_pipeline()
-    feature_cols = [c for c in training_df.columns if c not in (TARGET_COLUMN, "issue_d")]
+    feature_cols = [c for c in training_df.columns if c not in NON_FEATURE_COLUMNS]
     pipeline.fit(training_df[feature_cols], training_df[TARGET_COLUMN])
     return pipeline

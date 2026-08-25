@@ -6,7 +6,7 @@ import pandas as pd
 from sklearn.metrics import brier_score_loss, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 
-from config import TARGET_COLUMN
+from config import NON_FEATURE_COLUMNS, TARGET_COLUMN
 
 
 @dataclass
@@ -21,7 +21,7 @@ class ChampionChallengerComparison:
 
 
 def _score(pipeline: Pipeline, df: pd.DataFrame) -> tuple[float, float, float]:
-    feature_cols = [c for c in df.columns if c not in (TARGET_COLUMN, "issue_d")]
+    feature_cols = [c for c in df.columns if c not in NON_FEATURE_COLUMNS]
     y_true = df[TARGET_COLUMN]
     y_prob = pipeline.predict_proba(df[feature_cols])[:, 1]
     y_pred = (y_prob >= 0.5).astype(int)

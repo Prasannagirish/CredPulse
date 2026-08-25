@@ -4,7 +4,7 @@ from sklearn.metrics import roc_auc_score
 from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
-from config import TARGET_COLUMN
+from config import NON_FEATURE_COLUMNS, TARGET_COLUMN
 from model.features import build_preprocessor
 
 
@@ -41,7 +41,7 @@ def train_baseline(reference_df: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, 
     test_slice = sorted_df.iloc[split_idx:]
 
     pipeline = build_model_pipeline()
-    feature_cols = [c for c in reference_df.columns if c not in (TARGET_COLUMN, "issue_d")]
+    feature_cols = [c for c in reference_df.columns if c not in NON_FEATURE_COLUMNS]
     pipeline.fit(train_slice[feature_cols], train_slice[TARGET_COLUMN])
 
     return pipeline, train_slice, test_slice
@@ -50,7 +50,7 @@ def train_baseline(reference_df: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, 
 def evaluate_auc(pipeline: Pipeline, df: pd.DataFrame) -> float:
     """ROC-AUC of pipeline on df. Backtest metric only — computed on historical, resolved
     loan outcomes, never on live predictions."""
-    feature_cols = [c for c in df.columns if c not in (TARGET_COLUMN, "issue_d")]
+    feature_cols = [c for c in df.columns if c not in NON_FEATURE_COLUMNS]
     predictions = pipeline.predict_proba(df[feature_cols])[:, 1]
     return roc_auc_score(df[TARGET_COLUMN], predictions)
 

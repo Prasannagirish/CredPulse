@@ -44,6 +44,7 @@ def run_prepare(
     labeled = derive_target(cleaned)
     selected = select_features(labeled)
     selected["issue_d"] = raw.loc[selected.index, "issue_d"]
+    selected["id"] = raw.loc[selected.index, "id"]
 
     reference_df, eval_df = temporal_split(selected)
 
