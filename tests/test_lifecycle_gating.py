@@ -99,3 +99,17 @@ def test_rollback_reverts_to_previous_champion_with_confirm_true():
 
     assert reverted_version == v1
     assert get_champion_version() == v1
+
+
+def test_get_champion_promoted_at_returns_timestamp_after_promotion():
+    from lifecycle.registry import get_champion_promoted_at
+
+    assert get_champion_promoted_at() is None
+
+    version = _log_and_register_dummy_model()
+    set_challenger(version)
+    promote_challenger(confirm=True)
+
+    promoted_at = get_champion_promoted_at()
+    assert isinstance(promoted_at, int)
+    assert promoted_at > 0

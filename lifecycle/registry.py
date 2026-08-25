@@ -53,6 +53,16 @@ def get_champion_version(name: str | None = None) -> str | None:
         return None
 
 
+def get_champion_promoted_at(name: str | None = None) -> int | None:
+    """Milliseconds-since-epoch creation timestamp of the current champion version — used
+    by get_model_health to report "days since last retrain". None if there's no champion."""
+    name = _resolve_name(name)
+    try:
+        return _client().get_model_version_by_alias(name, _CHAMPION_ALIAS).creation_timestamp
+    except MlflowException:
+        return None
+
+
 def get_challenger_version(name: str | None = None) -> str | None:
     name = _resolve_name(name)
     try:
