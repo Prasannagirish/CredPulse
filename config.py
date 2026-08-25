@@ -47,3 +47,12 @@ NUMERIC_FEATURES = [
     "dti", "revol_util", "fico_range_low", "fico_range_high",
 ]
 CATEGORICAL_FEATURES = ["grade", "sub_grade", "home_ownership", "verification_status", "purpose"]
+
+# Drift thresholds (design doc §5)
+PSI_WARNING = 0.10
+PSI_BREACH = 0.25
+
+# A quarter's default label is only trustworthy once this many defaults have actually been
+# observed — quarters near the eval window's data cutoff are right-censored (loans haven't
+# had time to default yet), which is why Phase 1's report treats them as unreliable.
+MIN_RELIABLE_DEFAULTS = 100

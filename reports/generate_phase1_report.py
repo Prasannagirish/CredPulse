@@ -5,7 +5,7 @@ import mlflow
 import pandas as pd
 import matplotlib.pyplot as plt
 
-from config import MLFLOW_TRACKING_URI, PROCESSED_DIR, REPORTS_DIR
+from config import MIN_RELIABLE_DEFAULTS, MLFLOW_TRACKING_URI, PROCESSED_DIR, REPORTS_DIR
 from model.train import evaluate_auc, quarterly_auc, train_baseline
 
 
@@ -35,7 +35,6 @@ def main() -> None:
         quarterly = quarterly.merge(counts, on="quarter")
         # A quarter's default label is trustworthy once it has a reasonable number of
         # observed defaults; below that, the labels are still mostly "hasn't happened yet".
-        MIN_RELIABLE_DEFAULTS = 100
         quarterly["reliable"] = quarterly["n_defaults"] >= MIN_RELIABLE_DEFAULTS
 
         mlflow.log_param("model_type", "xgboost")
