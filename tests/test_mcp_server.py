@@ -109,3 +109,60 @@ def test_explain_prediction_impl_raises_for_unknown_loan_id(synthetic_state):
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+
+import mlflow
+import mlflow.sklearn
+
+
+@pytest.fixture(autouse=True)
+def isolated_mlflow_for_mutating_tools(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "MLFLOW_TRACKING_URI", f"sqlite:///{tmp_path / 'test_mlflow.db'}")
+    monkeypatch.setattr(config, "MODEL_NAME", "test-mcp-model")
+    mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
+    mlflow.create_experiment("test-mcp-experiment", artifact_location=f"file://{tmp_path / 'mlartifacts'}")
+    mlflow.set_experiment("test-mcp-experiment")
+
+
+def test_trigger_retrain_impl_never_promotes(synthetic_state):
+    from lifecycle.registry import get_challenger_version, get_champion_version
+
+    result = server.trigger_retrain_impl()
+
+    assert 0.0 <= result.champion_auc <= 1.0
+    assert 0.0 <= result.challenger_auc <= 1.0
+    assert get_challenger_version() == result.challenger_version
+    # trigger_retrain must never touch the champion alias itself (spec: "Does not promote")
+    assert get_champion_version() != result.challenger_version or get_champion_version() is None
+
+
+def test_promote_challenger_impl_refuses_without_confirm(synthetic_state):
+    from lifecycle.registry import ConfirmationRequired
+
+    server.trigger_retrain_impl()
+    with pytest.raises(ConfirmationRequired):
+        server.promote_challenger_impl(confirm=False)
+
+
+def test_promote_and_rollback_impl_round_trip(synthetic_state):
+    from lifecycle.registry import get_champion_version, register_model, set_challenger
+
+    with mlflow.start_run() as run:
+        mlflow.sklearn.log_model(
+            synthetic_state.champion_pipeline, "model",
+            skops_trusted_types=state.SKOPS_TRUSTED_TYPES,
+        )
+        model_uri = f"runs:/{run.info.run_id}/model"
+    bootstrap_version = register_model(model_uri)
+    set_challenger(bootstrap_version)
+    server.promote_challenger_impl(confirm=True)
+    assert get_champion_version() == bootstrap_version
+
+    retrain_result = server.trigger_retrain_impl()
+    promote_result = server.promote_challenger_impl(confirm=True)
+    assert promote_result.new_champion_version == retrain_result.challenger_version
+    assert get_champion_version() == retrain_result.challenger_version
+
+    rollback_result = server.rollback_impl(confirm=True)
+    assert rollback_result.reverted_to_version == bootstrap_version
+    assert get_champion_version() == bootstrap_version

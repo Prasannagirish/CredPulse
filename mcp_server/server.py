@@ -2,18 +2,32 @@
 backtest computations over historical Lending Club data — never a live evaluation."""
 import re
 
+import mlflow
+import mlflow.sklearn
 import pandas as pd
 from mcp.server.mcpserver import MCPServer
 from sklearn.metrics import f1_score
 
 import config
 from drift.engine import evaluate_drift
+from lifecycle.evaluate import compare_champion_challenger
+from lifecycle.registry import (
+    ConfirmationRequired,
+    promote_challenger as registry_promote_challenger,
+    register_model,
+    rollback as registry_rollback,
+    set_challenger,
+)
+from lifecycle.retrain import retrain_challenger, select_recent_window
 from mcp_server.schemas import (
     DriftReportOutput,
     FeatureContribution,
     FeatureDrift,
     ModelHealth,
     PredictionExplanation,
+    PromoteResult,
+    RetrainResult,
+    RollbackResult,
 )
 from mcp_server import state
 from model.train import evaluate_auc
@@ -184,3 +198,79 @@ def explain_prediction(loan_id: str) -> PredictionExplanation:
     """The champion model's predicted default probability for a given historical loan, plus
     its top SHAP feature contributions — framed like an adverse-action explanation."""
     return explain_prediction_impl(loan_id)
+
+
+def trigger_retrain_impl() -> RetrainResult:
+    """Retrain a challenger on the most recent available window and compare it against the
+    champion on a held-out slice neither model trained on. Never promotes anything."""
+    srv_state = state.get_state()
+    all_loans_df = pd.concat([srv_state.reference_df, srv_state.eval_df], ignore_index=True)
+    as_of = srv_state.eval_df["issue_d"].max() - pd.DateOffset(months=2)
+    training_window = select_recent_window(all_loans_df, as_of, months=config.RETRAIN_WINDOW_MONTHS)
+    holdout_start, holdout_end = as_of, as_of + pd.DateOffset(months=2)
+    holdout_df = all_loans_df[
+        (all_loans_df["issue_d"] >= holdout_start) & (all_loans_df["issue_d"] < holdout_end)
+    ]
+
+    challenger = retrain_challenger(training_window)
+    comparison = compare_champion_challenger(srv_state.champion_pipeline, challenger, holdout_df)
+
+    mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
+    with mlflow.start_run(run_name=f"mcp-trigger-retrain-{as_of.date()}") as run:
+        mlflow.sklearn.log_model(challenger, "model", skops_trusted_types=state.SKOPS_TRUSTED_TYPES)
+        mlflow.log_metric("auc", comparison.challenger_auc)
+        model_uri = f"runs:/{run.info.run_id}/model"
+    challenger_version = register_model(model_uri)
+    set_challenger(challenger_version)
+
+    return RetrainResult(
+        training_window_start=str(training_window["issue_d"].min().date()),
+        training_window_end=str(training_window["issue_d"].max().date()),
+        holdout_window_start=str(holdout_start.date()),
+        holdout_window_end=str(holdout_end.date()),
+        champion_auc=comparison.champion_auc,
+        challenger_auc=comparison.challenger_auc,
+        champion_f1=comparison.champion_f1,
+        challenger_f1=comparison.challenger_f1,
+        champion_brier=comparison.champion_brier,
+        challenger_brier=comparison.challenger_brier,
+        challenger_wins=comparison.challenger_wins,
+        challenger_version=challenger_version,
+    )
+
+
+def promote_challenger_impl(confirm: bool) -> PromoteResult:
+    new_version = registry_promote_challenger(confirm=confirm)
+    state.refresh_champion()
+    return PromoteResult(new_champion_version=new_version)
+
+
+def rollback_impl(confirm: bool) -> RollbackResult:
+    reverted_version = registry_rollback(confirm=confirm)
+    state.refresh_champion()
+    return RollbackResult(reverted_to_version=reverted_version)
+
+
+@mcp.tool(name="trigger_retrain")
+def trigger_retrain() -> RetrainResult:
+    """Retrain a challenger on the most recent available window, log the run to MLflow, and
+    return champion-vs-challenger metrics (AUC, F1, calibration). Does NOT promote anything."""
+    return trigger_retrain_impl()
+
+
+@mcp.tool(name="promote_challenger")
+def promote_challenger_tool(confirm: bool) -> PromoteResult:
+    """Promote the current challenger to champion in the MLflow registry. Refuses unless
+    confirm is exactly True — no silent auto-promotion, ever. Returns the new champion's
+    version."""
+    return promote_challenger_impl(confirm)
+
+
+@mcp.tool(name="rollback")
+def rollback_tool(confirm: bool) -> RollbackResult:
+    """Revert to the previous champion version. Refuses unless confirm is exactly True."""
+    return rollback_impl(confirm)
+
+
+if __name__ == "__main__":
+    mcp.run(transport="stdio")
