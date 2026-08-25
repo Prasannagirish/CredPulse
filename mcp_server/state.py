@@ -46,6 +46,12 @@ class ServerState:
     autoencoder: DriftAutoencoder
     reference_errors: np.ndarray
     explainer: object
+    # The pipeline whose preprocessor statistical_reference/autoencoder/reference_errors were
+    # fit through — fixed at bootstrap and never reassigned by refresh_champion(). Drift
+    # comparisons must always transform through THIS pipeline, never champion_pipeline once
+    # it may have been swapped for a differently-fit one by a promotion — otherwise the
+    # frozen reference would silently be compared against a different feature space.
+    reference_pipeline: Pipeline
 
 
 _state: ServerState | None = None
@@ -121,6 +127,7 @@ def _build_state() -> ServerState:
         autoencoder=autoencoder,
         reference_errors=reference_errors,
         explainer=explainer,
+        reference_pipeline=champion_pipeline,
     )
 
 

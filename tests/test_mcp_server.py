@@ -69,6 +69,7 @@ def synthetic_state(monkeypatch):
         autoencoder=autoencoder,
         reference_errors=reference_errors,
         explainer=explainer,
+        reference_pipeline=pipeline,
     )
     monkeypatch.setattr(state, "get_state", lambda force_refresh=False: fake_state)
     return fake_state
@@ -93,6 +94,47 @@ def test_get_drift_report_impl_resolves_last_n_days_window(synthetic_state):
     report = server.get_drift_report_impl(window="last_30d")
     assert report.window == "last_30d"
     assert report.status in ("ok", "warning", "breach")
+
+
+def test_get_drift_report_impl_unaffected_by_a_differently_shaped_champion(synthetic_state):
+    """Simulates what refresh_champion() does after a promotion: swaps champion_pipeline
+    for a pipeline whose ColumnTransformer was fit on a narrower set of categories (so its
+    one-hot output has a different width than the original reference_pipeline's). Regression
+    test: get_drift_report_impl must keep transforming through reference_pipeline, which is
+    never reassigned — using champion_pipeline instead would feed a mismatched-width array
+    into the frozen autoencoder/statistical reference and crash or produce garbage PSI."""
+    rng = np.random.default_rng(1)
+    n = 200
+    shifted_training_df = pd.DataFrame({
+        "issue_d": pd.date_range("2018-01-01", periods=n, freq="3D"),
+        "loan_amnt": rng.uniform(1000, 30000, size=n),
+        "term": rng.choice([36, 60], size=n),
+        "int_rate": rng.uniform(5, 25, size=n),
+        "emp_length": rng.integers(0, 11, size=n),
+        "annual_inc": rng.uniform(20000, 150000, size=n),
+        "dti": rng.uniform(0, 40, size=n),
+        "revol_util": rng.uniform(0, 100, size=n),
+        "fico_range_low": rng.integers(660, 800, size=n),
+        "fico_range_high": rng.integers(664, 804, size=n),
+        "grade": rng.choice(["A", "B"], size=n),  # only 2 of 7 grades -> narrower OHE output
+        "sub_grade": rng.choice(["A1", "A2"], size=n),
+        "home_ownership": rng.choice(["RENT"], size=n),
+        "verification_status": rng.choice(["Verified"], size=n),
+        "purpose": rng.choice(["other"], size=n),
+        "default_flag": rng.integers(0, 2, size=n),
+    })
+    new_champion = build_model_pipeline()
+    feature_cols = [c for c in shifted_training_df.columns if c not in config.NON_FEATURE_COLUMNS]
+    new_champion.fit(shifted_training_df[feature_cols], shifted_training_df[config.TARGET_COLUMN])
+
+    synthetic_state.champion_pipeline = new_champion  # what refresh_champion() would do
+
+    month = synthetic_state.eval_df["issue_d"].dt.to_period("M").astype(str).iloc[0]
+    report = server.get_drift_report_impl(window=month)
+
+    assert report.status in ("ok", "warning", "breach")
+    for feature in report.top_drifting_features:
+        assert np.isfinite(feature.psi)
 
 
 def test_explain_prediction_impl_returns_top_contributions(synthetic_state):

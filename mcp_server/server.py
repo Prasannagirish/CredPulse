@@ -88,7 +88,7 @@ def get_model_health_impl() -> ModelHealth:
     y_pred = (y_prob >= 0.5).astype(int)
     recent_f1 = f1_score(batch_df[config.TARGET_COLUMN], y_pred)
 
-    comparison_X = state.transform_for_drift(srv_state.champion_pipeline, batch_df)
+    comparison_X = state.transform_for_drift(srv_state.reference_pipeline, batch_df)
     report = evaluate_drift(
         window=batch_label,
         statistical_reference=srv_state.statistical_reference,
@@ -118,7 +118,7 @@ def get_model_health_impl() -> ModelHealth:
 def get_drift_report_impl(window: str = "last_30d") -> DriftReportOutput:
     srv_state = state.get_state()
     resolved_window, subset = _resolve_window(srv_state.eval_df, window)
-    comparison_X = state.transform_for_drift(srv_state.champion_pipeline, subset)
+    comparison_X = state.transform_for_drift(srv_state.reference_pipeline, subset)
 
     report = evaluate_drift(
         window=resolved_window,
