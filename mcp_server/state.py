@@ -52,11 +52,13 @@ def transform_for_drift(champion_pipeline: Pipeline, df: pd.DataFrame) -> np.nda
 
 
 def latest_reliable_batch(
-    eval_df: pd.DataFrame, min_defaults: int = config.MIN_RELIABLE_DEFAULTS
+    eval_df: pd.DataFrame, min_defaults: int | None = None
 ) -> tuple[str, pd.DataFrame]:
     """Most recent calendar month with at least min_defaults observed defaults — the same
     reliability bar Phase 1 established to avoid right-censored, near-meaningless metrics
-    close to the data cutoff."""
+    close to the data cutoff. min_defaults defaults to config.MIN_RELIABLE_DEFAULTS, looked
+    up here rather than as a function-definition-time default so tests can monkeypatch it."""
+    min_defaults = config.MIN_RELIABLE_DEFAULTS if min_defaults is None else min_defaults
     df = eval_df.copy()
     df["month"] = df["issue_d"].dt.to_period("M").astype(str)
     defaults_by_month = df.groupby("month")[config.TARGET_COLUMN].sum()
