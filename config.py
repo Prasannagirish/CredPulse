@@ -56,3 +56,10 @@ PSI_BREACH = 0.25
 # observed — quarters near the eval window's data cutoff are right-censored (loans haven't
 # had time to default yet), which is why Phase 1's report treats them as unreliable.
 MIN_RELIABLE_DEFAULTS = 100
+
+# Autoencoder drift thresholds. By construction, ~1% of in-distribution rows exceed the
+# reference set's own 99th-percentile reconstruction error — these fractions describe how
+# much larger than that 1% baseline a window's exceedance rate must be to count as drift.
+AE_ERROR_PERCENTILE = 0.99
+AE_WARNING_FRACTION = 0.02
+AE_BREACH_FRACTION = 0.05
