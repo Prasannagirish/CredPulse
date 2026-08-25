@@ -79,3 +79,10 @@ NON_FEATURE_COLUMNS = (TARGET_COLUMN, "issue_d", "id")
 # trigger a retrain every single month.
 SCHEDULED_RETRAIN_MONTHS = 3
 MONITORED_RETRAIN_COOLDOWN_MONTHS = 2
+
+# Dollar-impact assumptions (spec §8 Phase 5) — shown explicitly in the report, never a
+# hidden headline number (spec §2).
+APPROVAL_RATE = 0.80  # accept the lowest-predicted-risk 80% of applicants
+LOSS_GIVEN_DEFAULT = 1.0  # simplification: a defaulted loan's full principal is the loss —
+# no partial-recovery modeling, since recovery amounts are excluded from features as
+# leaky post-origination fields (spec §3) and genuinely aren't available here either.

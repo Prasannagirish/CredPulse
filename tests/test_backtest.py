@@ -65,3 +65,18 @@ def test_maybe_retrain_monitored_only_retrains_on_breach_after_cooldown():
 
     retrained = maybe_retrain_monitored(arm, pd.Timestamp("2019-04-01"), df, _dummy_report("breach"))
     assert retrained.retrain_count == 1
+
+
+from backtest.impact import dollar_impact
+
+
+def test_dollar_impact_accepts_fixed_fraction_and_computes_loss_per_10k():
+    df = _synthetic_df(500, "2019-01-01")
+    pipeline = retrain_challenger(df)
+
+    result = dollar_impact(pipeline, df, approval_rate=0.5)
+
+    assert abs(result["n_accepted"] - 250) <= 5
+    assert result["n_defaults"] >= 0
+    assert result["dollar_loss"] >= 0.0
+    assert result["dollar_loss_per_10k_loans"] >= 0.0
