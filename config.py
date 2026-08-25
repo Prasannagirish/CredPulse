@@ -73,3 +73,9 @@ MODEL_NAME = "creditpulse-credit-risk"
 # Columns that are never model features, in every "which columns go into X" computation
 # across model/train.py, lifecycle/evaluate.py, lifecycle/retrain.py, and the MCP server.
 NON_FEATURE_COLUMNS = (TARGET_COLUMN, "issue_d", "id")
+
+# Backtest arm cadence (Phase 5). Scheduled retrains on a blind calendar cadence; monitored
+# retrains only on drift breach, with a cooldown so a persistent breach signal doesn't
+# trigger a retrain every single month.
+SCHEDULED_RETRAIN_MONTHS = 3
+MONITORED_RETRAIN_COOLDOWN_MONTHS = 2
