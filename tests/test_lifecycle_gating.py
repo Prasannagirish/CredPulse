@@ -21,6 +21,13 @@ from lifecycle.registry import (
 def isolated_mlflow(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "MLFLOW_TRACKING_URI", f"sqlite:///{tmp_path / 'test_mlflow.db'}")
     monkeypatch.setattr(config, "MODEL_NAME", "test-model")
+    # MLflow's Default experiment gets an artifact_location resolved relative to cwd
+    # (./mlruns) the first time a fresh tracking DB is touched, regardless of the sqlite
+    # backend URI above — without this, every test run leaves an mlruns/ directory behind
+    # in the repo root. Point it at tmp_path instead so it's cleaned up with the test.
+    mlflow.set_tracking_uri(config.MLFLOW_TRACKING_URI)
+    mlflow.create_experiment("test-experiment", artifact_location=f"file://{tmp_path / 'mlartifacts'}")
+    mlflow.set_experiment("test-experiment")
 
 
 def _log_and_register_dummy_model() -> str:
