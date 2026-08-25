@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 
+from lifecycle.evaluate import compare_champion_challenger
 from lifecycle.retrain import retrain_challenger, select_recent_window
 
 
@@ -45,3 +46,22 @@ def test_retrain_challenger_returns_fitted_pipeline_that_predicts_probabilities(
     feature_cols = [c for c in df.columns if c not in ("default_flag", "issue_d")]
     predictions = pipeline.predict_proba(df[feature_cols])
     assert predictions.shape == (len(df), 2)
+
+
+def test_compare_champion_challenger_returns_metrics_for_both():
+    train_df = _synthetic_df(n=200, start="2018-01-01")
+    later_train_df = _synthetic_df(n=200, start="2019-01-01")
+    holdout_df = _synthetic_df(n=100, start="2019-09-01")
+
+    champion = retrain_challenger(train_df)
+    challenger = retrain_challenger(later_train_df)
+
+    comparison = compare_champion_challenger(champion, challenger, holdout_df)
+
+    assert 0.0 <= comparison.champion_auc <= 1.0
+    assert 0.0 <= comparison.challenger_auc <= 1.0
+    assert 0.0 <= comparison.champion_f1 <= 1.0
+    assert 0.0 <= comparison.challenger_f1 <= 1.0
+    assert 0.0 <= comparison.champion_brier <= 1.0
+    assert 0.0 <= comparison.challenger_brier <= 1.0
+    assert comparison.challenger_wins == (comparison.challenger_auc > comparison.champion_auc)
