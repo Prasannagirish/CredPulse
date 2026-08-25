@@ -8,6 +8,25 @@ from config import TARGET_COLUMN
 from model.features import build_preprocessor
 
 
+def build_model_pipeline() -> Pipeline:
+    """Unfit champion/challenger pipeline: shared preprocessor + XGBoost classifier.
+
+    Used by both the Phase 1 champion (train_baseline, below) and Phase 3 challenger
+    retraining (lifecycle.retrain.retrain_challenger) so both are trained with identical
+    architecture and hyperparameters — only the training data differs.
+    """
+    return Pipeline([
+        ("preprocess", build_preprocessor()),
+        ("model", XGBClassifier(
+            n_estimators=200,
+            max_depth=4,
+            learning_rate=0.05,
+            eval_metric="auc",
+            random_state=42,
+        )),
+    ])
+
+
 def train_baseline(reference_df: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, pd.DataFrame]:
     """Fit the baseline champion on a temporal holdout of the reference window.
 
@@ -21,16 +40,7 @@ def train_baseline(reference_df: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, 
     train_slice = sorted_df.iloc[:split_idx]
     test_slice = sorted_df.iloc[split_idx:]
 
-    pipeline = Pipeline([
-        ("preprocess", build_preprocessor()),
-        ("model", XGBClassifier(
-            n_estimators=200,
-            max_depth=4,
-            learning_rate=0.05,
-            eval_metric="auc",
-            random_state=42,
-        )),
-    ])
+    pipeline = build_model_pipeline()
     feature_cols = [c for c in reference_df.columns if c not in (TARGET_COLUMN, "issue_d")]
     pipeline.fit(train_slice[feature_cols], train_slice[TARGET_COLUMN])
 

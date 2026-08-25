@@ -63,3 +63,9 @@ MIN_RELIABLE_DEFAULTS = 100
 AE_ERROR_PERCENTILE = 0.99
 AE_WARNING_FRACTION = 0.02
 AE_BREACH_FRACTION = 0.05
+
+# Default trailing window (in months) a challenger retrains on, counting back from the
+# simulated "as of" retrain date.
+RETRAIN_WINDOW_MONTHS = 12
+
+MODEL_NAME = "creditpulse-credit-risk"
