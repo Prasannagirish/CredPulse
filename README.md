@@ -32,7 +32,7 @@ Retrain + shadow-evaluate challenger (MLflow tracks both runs)
 MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP client
 ```
 
-## What's built (Phases 1-6)
+## What's built (Phases 1-7)
 
 - **Phase 1 — Data + baseline model.** 2,925,493 Lending Club loans (2007-2020), a leak-safe
   temporal split (train on loans issued before 2019, evaluate on 2019-2020), and an XGBoost
@@ -64,6 +64,12 @@ MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP cl
   XGBoost's 0.7102), and a calibration check that found the champion systematically
   underestimates default risk. See the
   [Phase 6 results](#phase-6--model-selection) section below.
+- **Phase 7 — Fairness & sensitivity.** A disparate-impact screen (4/5ths rule) across
+  `home_ownership` and income-quartile proxies — explicitly caveated, since Lending Club's
+  public data has no protected-class labels — finds neither flagged (ratios 0.863, 0.887).
+  An approval-rate sensitivity sweep replaces Phase 5's single 80%-only dollar estimate with
+  a full curve. See the
+  [Phase 7 results](#phase-7--fairness--sensitivity) section below.
 
 ## How to run
 
@@ -76,6 +82,7 @@ uv run python -m reports.generate_phase3_report
 uv run python scripts/run_mcp_walkthrough.py   # drives the MCP server via a real client
 uv run python -m backtest.run_backtest         # the final quantified backtest
 uv run python -m reports.generate_phase6_report # hyperparameter tuning (~15-30 min), baseline, calibration
+uv run python -m reports.generate_phase7_report # fairness screen + approval-rate sensitivity
 ```
 
 ## MCP Lifecycle Walkthrough
@@ -236,6 +243,48 @@ already-risky loans.** Raw `predict_proba` output should not be used directly fo
 without a calibration correction (e.g., Platt scaling or isotonic regression) — this backtest
 did not build one, since Phase 6's goal was to measure calibration, not fix it, but the
 finding is real and would need addressing before any pricing use.
+
+## Phase 7 — Fairness & Sensitivity
+
+All figures below are a **backtest on public historical Lending Club data**.
+
+> **Limitation, stated plainly:** Lending Club's public dataset contains no protected-class
+> labels (race, sex, age, national origin, marital status) — genuine fair-lending analysis is
+> not possible on this data. The check below uses two literature-grounded **proxies**
+> instead — `home_ownership` and income quartiles of `annual_inc` — and its results are a
+> **screening heuristic, not a legal or regulatory determination**.
+
+**Disparate-impact screen**, evaluated on 2019-12 (2,307 loans) at the project's standard
+80% approval rate, using the standard US "4/5ths rule" (flagged if the ratio of the
+lowest-approval-rate group to the highest falls below 0.8):
+
+| Proxy | Lowest approval rate | Highest approval rate | Ratio | Result |
+|---|---|---|---|---|
+| `home_ownership` | RENT: 73.3% | MORTGAGE: 85.0% | 0.863 | not flagged |
+| `income_quartile` | Q2: 74.7% | Q4 (highest): 84.2% | 0.887 | not flagged |
+
+![Approval Rate by Home Ownership](reports/phase7_fairness_home_ownership.png)
+![Approval Rate by Income Quartile](reports/phase7_fairness_income_quartile.png)
+
+Neither proxy is flagged under the 4/5ths rule. Worth noting honestly rather than glossing
+over: within `home_ownership`, the `OWN` group has both a *higher* approval rate (77.9%) and
+a *higher* realized default rate among its approved loans (7.5%, versus RENT's 5.2%) than
+RENT — an inconsistency plausibly explained by `OWN` being the smallest group here (290
+loans total) rather than a systematic pattern; a single month's data isn't enough to
+distinguish real effect from sampling noise, and this screen should be re-run across more
+months before drawing a firm conclusion either way.
+
+**Approval-rate sensitivity**, replacing Phase 5's single 80%-only dollar estimate with a
+full curve:
+
+![Approval Rate Sensitivity](reports/phase7_approval_sensitivity.png)
+
+Loss per 10,000 loans rises from roughly $5.3M-$5.7M at conservative approval rates
+(50-70%) to $7.4M at 95% — the expected direction, since approving more applicants means
+accepting progressively riskier ones. The curve isn't perfectly monotonic (a slight dip at
+60-70% before the steeper rise) — with roughly 2,300 loans in a single evaluation month,
+that's consistent with sampling noise rather than a real effect, and is reported as-is
+rather than smoothed over.
 
 ## Definition of Done
 
