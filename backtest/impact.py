@@ -7,16 +7,27 @@ from sklearn.pipeline import Pipeline
 import config
 
 
+def compute_accepted_mask(
+    pipeline: Pipeline, df: pd.DataFrame, approval_rate: float = config.APPROVAL_RATE
+) -> np.ndarray:
+    """Boolean mask, True for the approval_rate fraction of df with the LOWEST predicted
+    default risk — the model picks its own threshold to hit that rate. Shared by
+    dollar_impact (below) and backtest.fairness.group_approval_rates, so both analyses use
+    the exact same accept/reject decision."""
+    feature_cols = [c for c in df.columns if c not in config.NON_FEATURE_COLUMNS]
+    risk_scores = pipeline.predict_proba(df[feature_cols])[:, 1]
+    threshold = np.quantile(risk_scores, approval_rate)
+    return risk_scores <= threshold
+
+
 def dollar_impact(
     pipeline: Pipeline, batch_df: pd.DataFrame, approval_rate: float = config.APPROVAL_RATE
 ) -> dict:
     """Accept the approval_rate fraction of batch_df with the LOWEST predicted default risk
     — each model picks its own threshold to hit that rate. This is what keeps the
     comparison fair: a model can't "win" simply by rejecting more loans than another."""
-    feature_cols = [c for c in batch_df.columns if c not in config.NON_FEATURE_COLUMNS]
-    risk_scores = pipeline.predict_proba(batch_df[feature_cols])[:, 1]
-    threshold = np.quantile(risk_scores, approval_rate)
-    accepted = batch_df[risk_scores <= threshold]
+    accepted_mask = compute_accepted_mask(pipeline, batch_df, approval_rate)
+    accepted = batch_df[accepted_mask]
 
     n_accepted = len(accepted)
     n_defaults = int(accepted[config.TARGET_COLUMN].sum())

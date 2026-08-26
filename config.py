@@ -90,3 +90,11 @@ LOSS_GIVEN_DEFAULT = 1.0  # simplification: a defaulted loan's full principal is
 # Hyperparameter tuning (Phase 6). A bounded, real search — not exhaustive.
 TUNING_N_TRIALS = 30
 TUNING_AUC_IMPROVEMENT_THRESHOLD = 0.005
+
+# Fairness screening (Phase 7). 0.8 is the standard US "4/5ths rule" disparate-impact
+# screen — a heuristic starting point, not a legal determination.
+DISPARATE_IMPACT_THRESHOLD = 0.8
+
+# Approval-rate sensitivity sweep (Phase 7) — replaces Phase 5's single 80%-only estimate
+# with a curve across a realistic range of approval policies.
+APPROVAL_RATE_SWEEP = [0.5, 0.6, 0.7, 0.8, 0.9, 0.95]
