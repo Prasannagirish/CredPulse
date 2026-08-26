@@ -86,3 +86,7 @@ APPROVAL_RATE = 0.80  # accept the lowest-predicted-risk 80% of applicants
 LOSS_GIVEN_DEFAULT = 1.0  # simplification: a defaulted loan's full principal is the loss —
 # no partial-recovery modeling, since recovery amounts are excluded from features as
 # leaky post-origination fields (spec §3) and genuinely aren't available here either.
+
+# Hyperparameter tuning (Phase 6). A bounded, real search — not exhaustive.
+TUNING_N_TRIALS = 30
+TUNING_AUC_IMPROVEMENT_THRESHOLD = 0.005

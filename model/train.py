@@ -27,18 +27,22 @@ def build_model_pipeline() -> Pipeline:
     ])
 
 
-def train_baseline(reference_df: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, pd.DataFrame]:
-    """Fit the baseline champion on a temporal holdout of the reference window.
+def temporal_holdout_split(reference_df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Chronological last-10% holdout of reference_df.
 
-    The test slice is the chronologically last 10% of reference_df, not a random sample —
-    a random split would let the model implicitly see "future" reference-window loans
+    A random split would let the model implicitly see "future" reference-window loans
     during training, which is a milder version of the same leak the reference/eval split
-    exists to prevent.
+    exists to prevent. Shared by train_baseline (below) and model.tune's hyperparameter
+    search — both must evaluate against the exact same holdout.
     """
     sorted_df = reference_df.sort_values("issue_d").reset_index(drop=True)
     split_idx = int(len(sorted_df) * 0.9)
-    train_slice = sorted_df.iloc[:split_idx]
-    test_slice = sorted_df.iloc[split_idx:]
+    return sorted_df.iloc[:split_idx], sorted_df.iloc[split_idx:]
+
+
+def train_baseline(reference_df: pd.DataFrame) -> tuple[Pipeline, pd.DataFrame, pd.DataFrame]:
+    """Fit the baseline champion on a temporal holdout of the reference window."""
+    train_slice, test_slice = temporal_holdout_split(reference_df)
 
     pipeline = build_model_pipeline()
     feature_cols = [c for c in reference_df.columns if c not in NON_FEATURE_COLUMNS]
