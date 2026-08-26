@@ -71,6 +71,81 @@ MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP cl
   a full curve. See the
   [Phase 7 results](#phase-7--fairness--sensitivity) section below.
 
+## Bugs Found and Fixed
+
+This project was built by an AI coding agent (Claude) working through each phase, actually
+running every script against real data rather than trusting the code to be correct on
+inspection. That discipline surfaced real bugs — methodology mistakes as much as software
+ones — at almost every phase. They're documented here rather than buried in commit history
+because *how* they were found and fixed is the more interesting part of this project than
+any individual chart.
+
+**Silent data and methodology bugs** — the kind that don't crash, they just produce a
+plausible-looking wrong answer:
+
+- **The eval window was empty and nothing errored.** The first Kaggle mirror downloaded
+  (`wordsforthewise/lending-club`) only covers loans through Q4 2018 — the entire 2019-2020
+  drift window the whole project depends on had zero rows. Caught only because the data
+  pipeline was run against the real file and its row counts inspected, not assumed. Fixed by
+  switching to a mirror (`ethon0426/lending-club-20072020q1`) that actually extends through
+  2020.
+- **AUC of 0.32 in the last quarter — worse than random.** The naive read is "the model
+  degraded catastrophically." The actual cause: loans issued close to the dataset's cutoff
+  haven't had enough time to resolve to "Charged Off" yet, so the default rate in that
+  quarter was 0.2%, not the model's fault. Fixed by defining a reliability threshold (≥100
+  observed defaults) and excluding quarters that don't meet it — a real censoring problem
+  that then had to be re-solved for the eval window, the MCP server's health check, the
+  backtest, and the fairness screen, since every later phase reused the eval data.
+- **The drift engine looked broken — breaching from the very first month.** Per-feature
+  attribution revealed it wasn't a bug: Lending Club changed its own loan-grading
+  methodology in March 2019, months before any macroeconomic drift. Separating that
+  platform-driven signal from genuine economic drift (which started in June 2019) turned an
+  apparently-broken result into the project's most interesting finding.
+- **`trigger_retrain` silently promoted a worse model.** Its default retrain-as-of date
+  landed the evaluation slice inside the same label-censoring window described above,
+  making a genuinely worse challenger (AUC 0.196) look statistically comparable to the
+  champion (AUC 0.322) — and the confirm-gate, working exactly as designed, still approved
+  it, because gating checks *whether a human said yes*, not *whether the underlying numbers
+  are trustworthy*. Caught by reading the actual walkthrough transcript before believing it.
+- **A stale preprocessor after promotion.** The MCP server's `get_drift_report` transformed
+  new data through whichever pipeline was *currently* champion, but compared it against a
+  drift reference frozen in the *original* champion's feature space. Confirmed with a
+  regression test that reverts the fix and reproduces the exact crash
+  (`RuntimeError: mat1 and mat2 shapes cannot be multiplied (11x16 and 39x16)`) before
+  trusting the fix mattered.
+
+**Environment and tooling bugs** — real, but not obvious from reading the code:
+
+- **A dependency resolver picked a 2021-era package for no reason.** `uv`'s resolver
+  occasionally locked `shap` to a `numba`/`llvmlite` pair that only supports Python <3.10,
+  on a project pinned to 3.12 — a stale-cache resolution artifact, fixed with explicit
+  version floors.
+- **XGBoost + PyTorch crash when run in the same process on macOS.** Both bundle their own
+  OpenMP runtime; running both without `OMP_NUM_THREADS=1` segfaults. This one had to be
+  learned twice — once inside the drift engine, and again inside the MCP server subprocess,
+  where the guard was one import too late (the server's own earlier imports had already
+  pulled in the conflicting libraries before the fix could take effect).
+- **The same fix, applied where it wasn't needed, cost 25 minutes.** A later report script
+  copy-pasted the OpenMP guard defensively — but that script never imports `torch` at all,
+  so the guard just forced 30 rounds of hyperparameter search to run single-threaded for no
+  reason. Caught by noticing the process's actual CPU usage didn't match a healthy
+  multi-threaded run, not by it crashing.
+- **An MCP SDK renamed its main class between versions.** The installed SDK's `FastMCP` is
+  now `MCPServer`. Verified the real, installed API by inspecting it directly before writing
+  any server code, rather than trusting the spec's (now-outdated) naming.
+
+**Quiet correctness bugs in the test suite itself:**
+
+- **Monkeypatching a function that was already imported by value.** A test patched
+  `mcp_server.state.get_state`, but the module under test had done
+  `from mcp_server.state import get_state`, binding its own independent reference — the
+  patch silently did nothing, and four tests ran against the real 1.78M-row dataset instead
+  of a fast synthetic fixture. The tell was a 29-second test run where every other test
+  file finishes in under a second.
+- **`numpy.bool_` is not `bool`.** A fairness check's `ratio < threshold` returned
+  `np.True_`, which fails an `is True` identity comparison even though it's equal to `True`
+  — a real footgun in any codebase mixing numpy arithmetic with plain Python assertions.
+
 ## How to run
 
 ```bash
