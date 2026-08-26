@@ -32,7 +32,7 @@ Retrain + shadow-evaluate challenger (MLflow tracks both runs)
 MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP client
 ```
 
-## What's built (Phases 1-5)
+## What's built (Phases 1-6)
 
 - **Phase 1 — Data + baseline model.** 2,925,493 Lending Club loans (2007-2020), a leak-safe
   temporal split (train on loans issued before 2019, evaluate on 2019-2020), and an XGBoost
@@ -58,6 +58,12 @@ MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP cl
   (drift-triggered retrain) — through the reliably-labeled 2019 window, plus a transparent
   dollar-impact estimate. See the [Phase 5 results](#phase-5--quantified-backtest-results)
   section below.
+- **Phase 6 — Model selection.** Optuna hyperparameter tuning (kept the hand-picked
+  defaults — tuning found only a +0.003 AUC improvement, below the adoption threshold), a
+  hand-rolled logistic regression + WOE scorecard baseline (0.7060 AUC, close behind
+  XGBoost's 0.7102), and a calibration check that found the champion systematically
+  underestimates default risk. See the
+  [Phase 6 results](#phase-6--model-selection) section below.
 
 ## How to run
 
@@ -69,6 +75,7 @@ uv run python -m reports.generate_phase2_report
 uv run python -m reports.generate_phase3_report
 uv run python scripts/run_mcp_walkthrough.py   # drives the MCP server via a real client
 uv run python -m backtest.run_backtest         # the final quantified backtest
+uv run python -m reports.generate_phase6_report # hyperparameter tuning (~15-30 min), baseline, calibration
 ```
 
 ## MCP Lifecycle Walkthrough
@@ -190,6 +197,45 @@ Both arms accept the **same number of loans** — the comparison isn't inflated 
 simply rejecting more applicants. The monitored strategy's lower default rate among an
 equally-sized accepted pool translates to an estimated **$1,294,986 saved per 10,000 loans**
 from monitoring + retraining versus never retraining, on this backtest.
+
+## Phase 6 — Model Selection
+
+All figures below are a **backtest on public historical Lending Club data**.
+
+**Hyperparameter tuning.** A 30-trial Optuna search (bounded, not exhaustive) over
+`n_estimators`, `max_depth`, `learning_rate`, `subsample`, `colsample_bytree`, and
+`min_child_weight`, maximizing AUC on the same chronological-last-10% holdout every other
+phase uses. Best tuned holdout AUC: **0.7132**, versus the hand-picked default's **0.7102**
+— a **+0.0030** improvement, below the 0.005 threshold set for adopting a new
+configuration. **Decision: the current default configuration is kept.** Tuning confirmed the
+original hand-picked hyperparameters were already close to optimal for this problem, rather
+than finding a meaningfully better one — a legitimate outcome, not a failed search.
+
+**Baseline comparison.** A hand-rolled logistic regression + Weight-of-Evidence scorecard —
+the industry-standard interpretable credit model — scores **0.7060** AUC on the same
+held-out slice, against the XGBoost champion's **0.7102**. The two are close (≈0.004 AUC
+apart):
+
+![Baseline Comparison](reports/phase6_tuning_comparison.png)
+
+This is a genuinely useful finding, not just a formality: in a regulated setting where every
+score needs to be explainable as adverse-action reasons, a WOE scorecard whose coefficients
+are directly interpretable as points added or subtracted may be worth a ~0.4-point AUC
+cost. XGBoost's edge here is real but modest, and its explainability depends on SHAP
+(`explain_prediction`, Phase 4) rather than being intrinsic to the model.
+
+**Calibration.** Expected Calibration Error: **0.0505**. The reliability diagram shows a
+consistent pattern, not noise — every single probability bucket sits above the perfect-
+calibration line, and the gap widens at higher predicted risk (bucket predicting 0.63 default
+probability observes 0.71; bucket predicting 0.71 observes 0.80):
+
+![Reliability Diagram](reports/phase6_calibration.png)
+
+**Read honestly: the champion systematically underestimates default risk, most severely for
+already-risky loans.** Raw `predict_proba` output should not be used directly for pricing
+without a calibration correction (e.g., Platt scaling or isotonic regression) — this backtest
+did not build one, since Phase 6's goal was to measure calibration, not fix it, but the
+finding is real and would need addressing before any pricing use.
 
 ## Definition of Done
 
