@@ -237,6 +237,8 @@ def trigger_retrain_impl() -> RetrainResult:
     with mlflow.start_run(run_name=f"mcp-trigger-retrain-{as_of.date()}") as run:
         mlflow.sklearn.log_model(challenger, "model", skops_trusted_types=state.SKOPS_TRUSTED_TYPES)
         mlflow.log_metric("auc", comparison.challenger_auc)
+        mlflow.log_metric("f1", comparison.challenger_f1)
+        mlflow.log_metric("brier", comparison.challenger_brier)
         model_uri = f"runs:/{run.info.run_id}/model"
     challenger_version = register_model(model_uri)
     set_challenger(challenger_version)

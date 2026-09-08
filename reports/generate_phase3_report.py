@@ -74,10 +74,14 @@ def main() -> None:
     with mlflow.start_run(run_name="champion-reference") as champion_run:
         mlflow.sklearn.log_model(champion, "model", skops_trusted_types=_SKOPS_TRUSTED_TYPES)
         mlflow.log_metric("auc", comparison.champion_auc)
+        mlflow.log_metric("f1", comparison.champion_f1)
+        mlflow.log_metric("brier", comparison.champion_brier)
         champion_uri = f"runs:/{champion_run.info.run_id}/model"
     with mlflow.start_run(run_name=f"challenger-as-of-{RETRAIN_AS_OF.date()}") as challenger_run:
         mlflow.sklearn.log_model(challenger, "model", skops_trusted_types=_SKOPS_TRUSTED_TYPES)
         mlflow.log_metric("auc", comparison.challenger_auc)
+        mlflow.log_metric("f1", comparison.challenger_f1)
+        mlflow.log_metric("brier", comparison.challenger_brier)
         challenger_uri = f"runs:/{challenger_run.info.run_id}/model"
 
     champion_version = register_model(champion_uri)
