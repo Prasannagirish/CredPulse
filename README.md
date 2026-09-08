@@ -34,10 +34,12 @@ MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP cl
 
 ## What's built (Phases 1-7)
 
-- **Phase 1 — Data + baseline model.** 2,925,493 Lending Club loans (2007-2020), a leak-safe
-  temporal split (train on loans issued before 2019, evaluate on 2019-2020), and an XGBoost
-  champion. Held-out pre-2019 AUC: **0.7102**. Quarterly AUC on 2019-2020 shows a real decline
-  (0.691 → 0.642) through the reliably-labeled window — see [`reports/phase1_auc_decline.png`](reports/phase1_auc_decline.png).
+- **Phase 1 — Data + baseline model.** 2,925,493 raw Lending Club loans (2007-2020), resolved to
+  1,860,764 after dropping non-terminal statuses (Current, Late, etc.) to avoid label leakage, a
+  leak-safe temporal split (train on loans issued before 2019, evaluate on 2019-2020), and an
+  XGBoost champion fit on the ~1.6M-loan pre-2019 training slice. Held-out pre-2019 AUC:
+  **0.7102**. Quarterly AUC on 2019-2020 shows a real decline (0.691 → 0.642) through the
+  reliably-labeled window — see [`reports/phase1_auc_decline.png`](reports/phase1_auc_decline.png).
 - **Phase 2 — Drift engine.** PSI/KS statistical drift plus a PyTorch autoencoder's
   reconstruction-error signal, combined into a single `ok`/`warning`/`breach` report with
   per-feature attribution. Macro-feature drift (income, DTI, utilization, FICO) breaches
@@ -46,8 +48,9 @@ MCP server (6 tools) ── driven by Claude Desktop, Claude Code, or any MCP cl
   a platform change, not economic drift. See [`reports/phase2_drift_lead_time.png`](reports/phase2_drift_lead_time.png).
 - **Phase 3 — Retrain + MLflow registry.** A challenger retrained on a trailing 12-month
   window beats the champion on AUC, F1, and Brier score (0.6308 → 0.6803 AUC) on a held-out
-  slice neither model trained on. `promote_challenger`/`rollback` are gated behind an
-  identity-checked `confirm=True` — verified by a passing test
+  slice neither model trained on. `promote_challenger`/`rollback` are gated behind a strict
+  `confirm is True` check (a truthy-but-not-`True` value like `1` is rejected) — verified by a
+  passing test
   ([`tests/test_lifecycle_gating.py`](tests/test_lifecycle_gating.py)) that no silent
   auto-promotion is possible.
 - **Phase 4 — MCP server.** All six lifecycle tools (`get_model_health`, `get_drift_report`,
